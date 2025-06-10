@@ -1,0 +1,266 @@
+---
+title: "EDA_ALSPAC"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-06-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(foreign)
+library(tidyverse)
+```
+
+Reading in ALSPAC data
+
+```{r}
+alspac = read.spss("Ulven_B3777_13Jan22.sav",to.data.frame = TRUE,add.undeclared.levels = "no")
+#str(alspac)
+```
+
+Checking data structure
+
+```{r}
+str(alspac)
+```
+
+Several variables such as cholesterols are factors and should be integers.
+
+```{r}
+alspac = alspac %>%
+  mutate(across(c("chol_cord","trig_cord","HDL_cord","LDL_cord","CRP_cord",
+                  "Trig_CIF31","Chol_CIF31","LDL_CIF31","HDL_CIF31",
+                  "Trig_CIF43","Chol_CIF43","LDL_CIF43","HDL_CIF43",
+                  "Chol_BBS","Trig_BBS","LDL_BBS","CHOL_F7","TRIG_F7","HDL_F7",
+                  "LDL_F7","CHOL_F9","trig_f9","HDL_f9","LDL_f9","VLDL_f9","CRP_f9","IL6_f9"),as.numeric))
+str(alspac)
+```
+
+
+Drop extra factors from variables that are categorical
+
+
+
+
+
+
+Count the NA values per sample
+
+```{r}
+na_count = apply(alspac,2,function(x){sum(is.na(x))})
+na_count_o = sort(na_count,decreasing = TRUE)
+na_count_o[1:10]
+varibles_half_na = names(na_count_o)[na_count_o >= max(na_count_o)/2]
+`%ni%` = Negate(`%in%`)
+alspac_use = alspac[,colnames(alspac) %ni% varibles_half_na]
+```
+Using mice for missing data analysis among remaining variables
+
+```{r}
+library(mice)
+library(VIM)
+## red is missing and blue is not missing
+missing_val_plot = aggr(alspac_use[,c(1:10)], col=c("blue","red"),
+                   numbers=TRUE,sortVard=TRUE,
+                     labels = names(alspac_use),cex.axis=.7,
+                       gap=3,ylab=c("porportion of missing","pattern"))
+
+
+
+#md.pattern(alspac_use,rotate.names = TRUE)
+```
+Display missing-data patterns
+```{r}
+tab.pattern=md.pattern(alspac_use[,c(1:10)],rotate.names = TRUE) ## difficul tot understand
+md.pattern(alspac_use[,c(1,11:20)],rotate.names = TRUE)
+md.pattern(alspac_use[,c(1,21:26)],rotate.names = TRUE)
+```
+Doing missing data pattern for the most interesting variables
+```{r}
+cols_use = c("cidB3777","no2_preg","pm25_preg","pm10_preg","kz021","c800","c804","c645a","b650")
+pdf("Missing_pattern_table.pdf",width = 10,height = 10)
+md.pattern(alspac_use[,cols_use],rotate.names = TRUE)
+dev.off()
+```
+
+
+Both no2_preg and pm25_preg have the most missing values
+
+```{r}
+missing_b650<-is.na(alspac_use$b650)#Missing indicator for ever smoked
+
+missing_c645a<-is.na(alspac_use$c645a)#Missing indicator for mom education
+
+missing_c800<-is.na(alspac_use$c800)#Missing indicator for ethnic group
+
+missing_c804<-is.na(alspac_use$c804)#Missing indicator for child ethnicity
+
+missing_areases<-is.na(alspac_use$areases_quint_preg)#Missing indicator for areaSES
+
+
+```
+
+Using the missing data indicator variable created, let us compare the mean PM2.5 exposure of those with missing values on Length against those whose Length was observed. 
+
+```{r}
+tapply(X=alspac_use$pm25_preg,INDEX=missing_b650,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm25_preg,INDEX=missing_c645a,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm25_preg,INDEX=missing_c800,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm25_preg,INDEX=missing_c804,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm25_preg,INDEX=missing_areases,FUN=mean,na.rm=T)
+
+
+```
+Above table suggests no notable difference pm25_preg for those categorical variables.
+
+```{r}
+t.test(alspac_use$pm25_preg ~ missing_b650)
+t.test(alspac_use$pm25_preg ~ missing_c645a)
+t.test(alspac_use$pm25_preg ~ missing_c800)
+t.test(alspac_use$pm25_preg ~ missing_c804)
+#t.test(alspac_use$pm25_preg ~ missing_areases)
+
+```
+There is no significant difference in PM2.5 exposure for those with or without
+data on some potential covariates.
+Making a jitter plot for PM2.5 by various groups
+```{r}
+plot(jitter(as.numeric(missing_c804)),alspac_use$pm25_preg,ylim=c(9,16),
+            xaxt="n",
+            xlab="Mother ever smoked missingness",
+            ylab="PM2.5 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$pm25_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$pm25_preg,na.rm=T),col="red")
+```
+Now doing the same for PM10
+First checking number of missing Pm10 values by confounders
+```{r}
+tapply(X=alspac_use$pm10_preg,INDEX=missing_b650,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm10_preg,INDEX=missing_c645a,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm10_preg,INDEX=missing_c800,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm10_preg,INDEX=missing_c804,FUN=mean,na.rm=T)
+tapply(X=alspac_use$pm10_preg,INDEX=missing_areases,FUN=mean,na.rm=T)
+
+```
+
+T test for PM10
+
+```{r}
+
+t.test(alspac_use$pm10_preg ~ missing_b650)
+t.test(alspac_use$pm10_preg ~ missing_c645a)
+t.test(alspac_use$pm10_preg ~ missing_c800)
+t.test(alspac_use$pm10_preg ~ missing_c804)
+#t.test(alspac_use$pm25_preg ~ missing_areases)
+
+```
+
+
+```{r}
+plot(jitter(as.numeric(missing_b650)),alspac_use$pm10_preg,ylim=c(26,42),
+            xaxt="n",
+            xlab="Mother ever smoked missingness",
+            ylab="PM10 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$pm10_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$pm10_preg,na.rm=T),col="red")
+```
+
+Now, I will drop the extra levels of all categorical variables that do not have values corresponding to those levels
+```{r}
+alspac_use_no_extra_factor <- alspac_use %>%
+  mutate(across(where(is.factor), fct_drop))
+```
+
+Now chekcing if extra factors dropped
+```{r}
+str(alspac_use)
+str(alspac_use_no_extra_factor)
+```
+
+Using the missing data indicator variable created, let us compare the mean NO2 exposure of those with missing values on Length against those whose Length was observed. 
+
+
+```{r}
+tapply(X=alspac_use_no_extra_factor$no2_preg,INDEX=missing_b650,FUN=mean,na.rm=T)
+tapply(X=alspac_use_no_extra_factor$no2_preg,INDEX=missing_c645a,FUN=mean,na.rm=T)
+tapply(X=alspac_use_no_extra_factor$no2_preg,INDEX=missing_c800,FUN=mean,na.rm=T)
+tapply(X=alspac_use_no_extra_factor$no2_preg,INDEX=missing_c804,FUN=mean,na.rm=T)
+#tapply(X=alspac_use$no2_preg,INDEX=missing_areases,FUN=mean,na.rm=T)
+
+```
+T-test for NO2.
+
+```{r}
+
+t.test(alspac_use_no_extra_factor$no2_preg ~ missing_b650)
+t.test(alspac_use_no_extra_factor$no2_preg ~ missing_c645a)
+t.test(alspac_use_no_extra_factor$no2_preg ~ missing_c800)
+t.test(alspac_use_no_extra_factor$no2_preg ~ missing_c804)
+#t.test(alspac_use$pm25_preg ~ missing_areases)
+```
+The above data suggests that NO2 has different distribution by several of the potential covariates.
+
+```{r}
+plot(jitter(as.numeric(missing_b650)),alspac_use$no2_preg,ylim=c(15,36),
+            xaxt="n",
+            xlab="Mother ever smoked missingness",
+            ylab="NO2 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$no2_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$no2_preg,na.rm=T),col="red")
+
+plot(jitter(as.numeric(missing_c645a)),alspac_use$no2_preg,ylim=c(15,36),
+            xaxt="n",
+            xlab="Maternal education",
+            ylab="NO2 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$no2_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$no2_preg,na.rm=T),col="red")
+
+plot(jitter(as.numeric(missing_c800)),alspac_use$no2_preg,ylim=c(15,36),
+            xaxt="n",
+            xlab="Child ethnic group",
+            ylab="NO2 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$no2_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$no2_preg,na.rm=T),col="red")
+
+plot(jitter(as.numeric(missing_c804)),alspac_use$no2_preg,ylim=c(15,36),
+            xaxt="n",
+            xlab="Child ethnicity",
+            ylab="NO2 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$no2_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$no2_preg,na.rm=T),col="red")
+
+plot(jitter(as.numeric(missing_areases)),alspac_use$no2_preg,ylim=c(15,36),
+            xaxt="n",
+            xlab="Area SES",
+            ylab="NO2 during pregnancy")
+axis(1, at=c(0,1), labels=c("Not missing","Missing"))
+
+abline(h=quantile(alspac_use$no2_preg,1/4,na.rm=T)-1.5*IQR(alspac_use$no2_preg,na.rm=T),col="red")
+
+
+```
+Checking if the exposures are different by gender
+```{r}
+t.test(alspac_use_no_extra_factor$no2_preg ~ alspac_use_no_extra_factor$kz021)
+t.test(alspac_use_no_extra_factor$pm25_preg ~ alspac_use_no_extra_factor$kz021)
+t.test(alspac_use_no_extra_factor$pm10_preg ~ alspac_use_no_extra_factor$kz021)
+
+```
+While distribution of pollutant exposure does not differ by gender, gender
+differences lead to differences in expression of genes and hence adjusting for
+gender is necessary. This analysis is followed by differential expression analysis
+using the bryois.csv microarray matrix from ALSPAC.
+
+
+
+
